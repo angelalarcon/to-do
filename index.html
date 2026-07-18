@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="theme-color" content="#4f46e5" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
 <title>Mis Tareas</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -65,6 +68,14 @@
 
 <!-- Floating add button -->
 <button id="openAddBtn" class="fixed bottom-6 right-6 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full w-20 h-20 text-3xl shadow-lg leading-none">+</button>
+
+<!-- Banner de instalación (Agregar al escritorio / pantalla de inicio) -->
+<div id="installBanner" class="hidden fixed bottom-28 left-4 right-4 max-w-md mx-auto bg-white rounded-xl shadow-lg p-3 flex items-center gap-3 z-40">
+  <img id="installBannerIcon" class="w-10 h-10 rounded-lg object-cover shrink-0" alt="" />
+  <p id="installBannerText" class="flex-1 text-sm">Agrega esta app a tu pantalla de inicio.</p>
+  <button id="installBtn" class="hidden bg-indigo-600 text-white text-sm px-3 py-1.5 rounded-lg whitespace-nowrap">Instalar</button>
+  <button id="installDismissBtn" class="text-slate-400 text-xl leading-none px-1">&times;</button>
+</div>
 
 <!-- Modal -->
 <div id="taskModal" class="hidden fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
@@ -714,13 +725,137 @@ document.getElementById('nextWeekBtn').addEventListener('click', () => {
   render();
 });
 
+/* ------------------------- PWA: manifest e ícono por sesión ------------------------- */
+function squareIcon(src, size = 512) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = size; canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, size, size);
+      const scale = Math.min(size / img.width, size / img.height);
+      const w = img.width * scale, h = img.height * scale;
+      ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
+      canvas.toBlob(blob => resolve(URL.createObjectURL(blob)), 'image/png');
+    };
+    img.onerror = reject;
+    img.src = src;
+  });
+}
+
+async function setupPwaManifest() {
+  const isAnais = state.sessionUser === 'u2';
+  const iconSrc = isAnais ? 'img/anais.png' : 'img/angel.png';
+  const name = isAnais ? 'Tareas de Anaís' : 'Tareas de Angel';
+  const iconUrl = await squareIcon(iconSrc);
+
+  const manifest = {
+    name,
+    short_name: name,
+    start_url: location.pathname + location.search,
+    scope: location.pathname.replace(/[^/]*$/, ''),
+    display: 'standalone',
+    background_color: '#f1f5f9',
+    theme_color: '#4f46e5',
+    icons: [{ src: iconUrl, sizes: '512x512', type: 'image/png' }],
+  };
+  const manifestUrl = URL.createObjectURL(new Blob([JSON.stringify(manifest)], { type: 'application/json' }));
+
+  let link = document.getElementById('manifestLink');
+  if (!link) {
+    link = document.createElement('link');
+    link.id = 'manifestLink';
+    link.rel = 'manifest';
+    document.head.appendChild(link);
+  }
+  link.href = manifestUrl;
+
+  let appleIcon = document.getElementById('appleTouchIcon');
+  if (!appleIcon) {
+    appleIcon = document.createElement('link');
+    appleIcon.id = 'appleTouchIcon';
+    appleIcon.rel = 'apple-touch-icon';
+    document.head.appendChild(appleIcon);
+  }
+  appleIcon.href = iconUrl;
+
+  let appleTitle = document.getElementById('appleTitle');
+  if (!appleTitle) {
+    appleTitle = document.createElement('meta');
+    appleTitle.id = 'appleTitle';
+    appleTitle.name = 'apple-mobile-web-app-title';
+    document.head.appendChild(appleTitle);
+  }
+  appleTitle.content = name;
+
+  document.title = name;
+  const bannerIcon = document.getElementById('installBannerIcon');
+  if (bannerIcon) bannerIcon.src = iconUrl;
+}
+
+/* ------------------------- PWA: instalar en escritorio ------------------------- */
+let deferredInstallPrompt = null;
+
+function isStandalone() {
+  return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+}
+
+function showInstallBanner(iosFallback) {
+  if (isStandalone()) return;
+  const banner = document.getElementById('installBanner');
+  const btn = document.getElementById('installBtn');
+  const text = document.getElementById('installBannerText');
+  if (iosFallback) {
+    btn.classList.add('hidden');
+    text.textContent = 'Toca el botón compartir ⬆️ y luego "Agregar a pantalla de inicio" para instalar esta app.';
+  } else {
+    btn.classList.remove('hidden');
+    text.textContent = 'Agrega esta app a tu pantalla de inicio para acceso rápido.';
+  }
+  banner.classList.remove('hidden');
+}
+
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  showInstallBanner(false);
+});
+
+window.addEventListener('appinstalled', () => {
+  document.getElementById('installBanner').classList.add('hidden');
+  deferredInstallPrompt = null;
+});
+
+document.getElementById('installBtn').addEventListener('click', async () => {
+  if (!deferredInstallPrompt) return;
+  deferredInstallPrompt.prompt();
+  await deferredInstallPrompt.userChoice;
+  deferredInstallPrompt = null;
+  document.getElementById('installBanner').classList.add('hidden');
+});
+
+document.getElementById('installDismissBtn').addEventListener('click', () => {
+  document.getElementById('installBanner').classList.add('hidden');
+});
+
 /* ----------------------------------- Init ----------------------------------- */
 window.addEventListener('load', async () => {
+  await setupPwaManifest();
   render();
   await loadTasksFromSupabase();
   render();
 
   setInterval(() => { if (state.activeTab === 'daily') renderDailySchedule(); }, 60000);
+
+  if (/iphone|ipad|ipod/i.test(navigator.userAgent) && !isStandalone()) {
+    showInstallBanner(true);
+  }
+
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
 });
 </script>
 </body>
