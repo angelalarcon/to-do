@@ -15,9 +15,9 @@
   <header class="flex items-center justify-between gap-3 mb-4">
     <h1 class="text-2xl font-bold">✅ Mis Tareas</h1>
   </header>
-  <div class="flex w-full overflow-hidden h-32">
+  <div id="sessionAvatarWrap" class="hidden flex w-full overflow-hidden h-32">
     <div class="w-32 ml-auto">
-        <img src="img/anais.png" alt="anais">
+        <img id="sessionAvatar" src="" alt="">
     </div>
   </div>
   <!-- Tabs -->
@@ -348,8 +348,17 @@ function visibleForFilter(task) {
 }
 
 /* --------------------------------- Render -------------------------------- */
+function renderSessionAvatar() {
+  const wrap = document.getElementById('sessionAvatarWrap');
+  const img = document.getElementById('sessionAvatar');
+  if (state.sessionUser === 'u1') { img.src = 'img/angel.png'; img.alt = 'angel'; wrap.classList.remove('hidden'); }
+  else if (state.sessionUser === 'u2') { img.src = 'img/anais.png'; img.alt = 'anais'; wrap.classList.remove('hidden'); }
+  else { wrap.classList.add('hidden'); }
+}
+
 function render() {
   renderUserSelect();
+  renderSessionAvatar();
   document.querySelectorAll('.tab-btn').forEach(btn => {
     const active = btn.dataset.tab === state.activeTab;
     btn.className = 'tab-btn flex-1 py-2 rounded-lg font-medium ' + (active ? 'bg-indigo-600 text-white' : 'text-slate-500');
