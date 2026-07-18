@@ -92,24 +92,33 @@
       <textarea id="taskDescription" rows="2" class="block w-full border border-slate-300 rounded-lg px-3 py-2 mt-1" placeholder="Detalles de la tarea"></textarea>
     </div>
 
-    <div>
-      <label class="text-sm font-medium">Asignar a</label>
-      <select id="taskUser" class="block w-full border border-slate-300 rounded-lg px-3 py-2 mt-1"></select>
-    </div>
-
     <div class="flex items-center gap-2">
       <input type="checkbox" id="taskRepeats" class="w-4 h-4" />
       <label for="taskRepeats" class="text-sm font-medium">¿Se repite?</label>
     </div>
 
-    <div id="repeatFields" class="hidden flex items-center gap-2">
-      <span class="text-sm">Cada</span>
-      <input type="number" id="taskRepeatEvery" min="1" value="1" class="w-16 border border-slate-300 rounded-lg px-2 py-1" />
-      <select id="taskRepeatUnit" class="border border-slate-300 rounded-lg px-2 py-1">
-        <option value="day">día(s)</option>
-        <option value="week">semana(s)</option>
-        <option value="month">mes(es)</option>
-      </select>
+    <div id="repeatFields" class="hidden">
+      <div class="flex items-center gap-2">
+        <span id="repeatEveryGroup" class="flex items-center gap-2">
+          <span class="text-sm">Cada</span>
+          <input type="number" id="taskRepeatEvery" min="1" value="1" class="w-16 border border-slate-300 rounded-lg px-2 py-1" />
+        </span>
+        <select id="taskRepeatUnit" class="border border-slate-300 rounded-lg px-2 py-1">
+          <option value="day">día(s)</option>
+          <option value="week">semana(s)</option>
+          <option value="month">mes(es)</option>
+          <option value="weekdays">días de la semana</option>
+        </select>
+      </div>
+      <div id="repeatWeekdaysField" class="hidden flex flex-wrap gap-2 mt-2">
+        <label class="flex items-center gap-1 text-xs bg-slate-100 rounded-full px-2 py-1"><input type="checkbox" class="repeatDayCheckbox w-3.5 h-3.5" value="0" /> Lun</label>
+        <label class="flex items-center gap-1 text-xs bg-slate-100 rounded-full px-2 py-1"><input type="checkbox" class="repeatDayCheckbox w-3.5 h-3.5" value="1" /> Mar</label>
+        <label class="flex items-center gap-1 text-xs bg-slate-100 rounded-full px-2 py-1"><input type="checkbox" class="repeatDayCheckbox w-3.5 h-3.5" value="2" /> Mié</label>
+        <label class="flex items-center gap-1 text-xs bg-slate-100 rounded-full px-2 py-1"><input type="checkbox" class="repeatDayCheckbox w-3.5 h-3.5" value="3" /> Jue</label>
+        <label class="flex items-center gap-1 text-xs bg-slate-100 rounded-full px-2 py-1"><input type="checkbox" class="repeatDayCheckbox w-3.5 h-3.5" value="4" /> Vie</label>
+        <label class="flex items-center gap-1 text-xs bg-slate-100 rounded-full px-2 py-1"><input type="checkbox" class="repeatDayCheckbox w-3.5 h-3.5" value="5" /> Sáb</label>
+        <label class="flex items-center gap-1 text-xs bg-slate-100 rounded-full px-2 py-1"><input type="checkbox" class="repeatDayCheckbox w-3.5 h-3.5" value="6" /> Dom</label>
+      </div>
     </div>
 
     <div>
@@ -149,6 +158,7 @@
           repeats boolean not null default false,
           repeat_every int not null default 1,
           repeat_unit text,
+          repeat_days jsonb,
           due_date date,
           time text,
           image_url text,
@@ -178,8 +188,8 @@
    Mientras no reemplaces estos valores, la app sigue funcionando
    guardando todo en localStorage (modo local, sin sincronizar).
 --------------------------------------------------------------------- */
-const SUPABASE_URL = 'https://TU-PROYECTO.supabase.co';
-const SUPABASE_ANON_KEY = 'TU_ANON_KEY';
+const SUPABASE_URL = 'https://tqzisceafcxjodoyzrmk.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_5TTAtSCI1gfKaLWATqelOA_zj1mnIYP';
 const IMAGES_BUCKET = 'task-images';
 
 const sb = (SUPABASE_URL.includes('TU-PROYECTO') || !window.supabase)
@@ -221,6 +231,7 @@ function taskToRow(t) {
     repeats: t.repeats,
     repeat_every: t.repeatEvery,
     repeat_unit: t.repeatUnit,
+    repeat_days: t.repeatDays || null,
     due_date: t.dueDate,
     time: t.time,
     image_url: t.image,
@@ -237,6 +248,7 @@ function rowToTask(r) {
     repeats: r.repeats,
     repeatEvery: r.repeat_every,
     repeatUnit: r.repeat_unit,
+    repeatDays: r.repeat_days || null,
     dueDate: r.due_date,
     time: r.time,
     image: r.image_url,
@@ -269,8 +281,9 @@ async function uploadImageToSupabase(taskId, dataUrl) {
   if (!sb || !dataUrl || !dataUrl.startsWith('data:')) return dataUrl;
   try {
     const blob = await (await fetch(dataUrl)).blob();
-    const path = `${taskId}-${Math.random().toString(36).slice(2, 8)}.jpg`;
-    const { error } = await sb.storage.from(IMAGES_BUCKET).upload(path, blob, { contentType: 'image/jpeg', upsert: true });
+    const ext = (blob.type.split('/')[1] || 'jpg').split('+')[0];
+    const path = `${taskId}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    const { error } = await sb.storage.from(IMAGES_BUCKET).upload(path, blob, { contentType: blob.type, upsert: true });
     if (error) { console.error('Error subiendo imagen a Supabase:', error.message); return dataUrl; }
     const { data } = sb.storage.from(IMAGES_BUCKET).getPublicUrl(path);
     return data.publicUrl;
@@ -311,7 +324,8 @@ function resizeImage(file, maxSize = 320) {
         const canvas = document.createElement('canvas');
         canvas.width = width; canvas.height = height;
         canvas.getContext('2d').drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL('image/jpeg', 0.8));
+        const mimeType = file.type && file.type.startsWith('image/') ? file.type : 'image/png';
+        resolve(canvas.toDataURL(mimeType, 0.8));
       };
       img.onerror = reject;
       img.src = reader.result;
@@ -334,6 +348,10 @@ function occursOn(task, date) {
   const diffDays = Math.round((day - start) / 86400000);
   const every = Math.max(1, parseInt(task.repeatEvery, 10) || 1);
   if (task.repeatUnit === 'day') return diffDays % every === 0;
+  if (task.repeatUnit === 'weekdays') {
+    const dow = (day.getDay() + 6) % 7; // lunes = 0
+    return (task.repeatDays || []).includes(dow);
+  }
   if (task.repeatUnit === 'week') return diffDays % (7 * every) === 0;
   if (task.repeatUnit === 'month') {
     if (day.getDate() !== start.getDate()) return false;
@@ -357,7 +375,6 @@ function renderSessionAvatar() {
 }
 
 function render() {
-  renderUserSelect();
   renderSessionAvatar();
   document.querySelectorAll('.tab-btn').forEach(btn => {
     const active = btn.dataset.tab === state.activeTab;
@@ -368,7 +385,7 @@ function render() {
 
   if (state.activeTab === 'daily') {
     renderDailySchedule();
-    renderSimpleTab('dailyList', t => t.repeats && t.repeatUnit === 'day');
+    renderSimpleTab('dailyList', t => t.repeats && (t.repeatUnit === 'day' || t.repeatUnit === 'weekdays'));
   }
   if (state.activeTab === 'weekly') {
     renderWeekCalendar();
@@ -384,9 +401,13 @@ function userLabel(userKey) {
   return state.users[userKey] || userKey;
 }
 
+const DAY_ABBR = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+
 function taskCardHtml(task, opts = {}) {
   const done = opts.showCheck && task.completedDates?.includes(opts.dateKey || todayStr());
-  const repeatInfo = task.repeats ? `🔁 cada ${task.repeatEvery} ${{ day: 'día(s)', week: 'semana(s)', month: 'mes(es)' }[task.repeatUnit]}` : '';
+  const repeatInfo = !task.repeats ? '' : task.repeatUnit === 'weekdays'
+    ? `🔁 ${(task.repeatDays || []).slice().sort((a, b) => a - b).map(d => DAY_ABBR[d]).join(', ') || 'sin días'}`
+    : `🔁 cada ${task.repeatEvery} ${{ day: 'día(s)', week: 'semana(s)', month: 'mes(es)' }[task.repeatUnit]}`;
   const dueInfo = task.dueDate ? `📅 ${task.dueDate}` : '';
   const timeInfo = task.time ? `🕐 ${task.time}` : '';
 
@@ -441,7 +462,7 @@ function renderDailySchedule() {
   const container = document.getElementById('dailySchedule');
   const now = new Date();
   const currentHour = now.getHours();
-  const dayTasks = state.tasks.filter(t => visibleForFilter(t) && t.repeats && t.repeatUnit === 'day' && occursOn(t, now));
+  const dayTasks = state.tasks.filter(t => visibleForFilter(t) && t.repeats && (t.repeatUnit === 'day' || t.repeatUnit === 'weekdays') && occursOn(t, now));
 
   let html = '';
   for (let h = 0; h < 24; h++) {
@@ -482,14 +503,6 @@ function renderWeekCalendar() {
       </div>`;
   }
   grid.innerHTML = html;
-}
-
-function renderUserSelect() {
-  const sel = document.getElementById('taskUser');
-  sel.innerHTML = `
-    <option value="u1">${state.users.u1}</option>
-    <option value="u2">${state.users.u2}</option>
-    <option value="both">Ambos</option>`;
 }
 
 function renderCalendar() {
@@ -545,11 +558,14 @@ function openModal(task = null) {
   document.getElementById('modalTitle').textContent = task ? 'Editar tarea' : 'Nueva tarea';
   document.getElementById('taskTitle').value = task?.title || '';
   document.getElementById('taskDescription').value = task?.description || '';
-  document.getElementById('taskUser').value = task?.user || state.sessionUser || 'u1';
   document.getElementById('taskRepeats').checked = !!task?.repeats;
   document.getElementById('repeatFields').classList.toggle('hidden', !task?.repeats);
   document.getElementById('taskRepeatEvery').value = task?.repeatEvery || 1;
   document.getElementById('taskRepeatUnit').value = task?.repeatUnit || 'day';
+  document.querySelectorAll('.repeatDayCheckbox').forEach(cb => {
+    cb.checked = (task?.repeatDays || []).includes(parseInt(cb.value, 10));
+  });
+  updateRepeatUnitUI();
   document.getElementById('taskDueDate').value = task?.dueDate || '';
   document.getElementById('taskTime').value = task?.time || '';
   document.getElementById('deleteTaskBtn').classList.toggle('hidden', !task);
@@ -564,6 +580,12 @@ function closeModal() {
   modal.classList.remove('flex');
 }
 
+function updateRepeatUnitUI() {
+  const isWeekdays = document.getElementById('taskRepeatUnit').value === 'weekdays';
+  document.getElementById('repeatWeekdaysField').classList.toggle('hidden', !isWeekdays);
+  document.getElementById('repeatEveryGroup').classList.toggle('hidden', isWeekdays);
+}
+
 document.getElementById('openAddBtn').addEventListener('click', () => openModal());
 document.getElementById('closeModalBtn').addEventListener('click', closeModal);
 document.getElementById('cancelModalBtn').addEventListener('click', closeModal);
@@ -571,6 +593,8 @@ document.getElementById('cancelModalBtn').addEventListener('click', closeModal);
 document.getElementById('taskRepeats').addEventListener('change', e => {
   document.getElementById('repeatFields').classList.toggle('hidden', !e.target.checked);
 });
+
+document.getElementById('taskRepeatUnit').addEventListener('change', updateRepeatUnitUI);
 
 document.getElementById('taskImage').addEventListener('change', async e => {
   const file = e.target.files[0];
@@ -586,6 +610,13 @@ form.addEventListener('submit', async e => {
   const id = document.getElementById('taskId').value || uid();
   const existing = state.tasks.find(t => t.id === id);
 
+  const repeatUnit = document.getElementById('taskRepeatUnit').value;
+  const repeatDays = Array.from(document.querySelectorAll('.repeatDayCheckbox:checked')).map(cb => parseInt(cb.value, 10));
+  if (document.getElementById('taskRepeats').checked && repeatUnit === 'weekdays' && repeatDays.length === 0) {
+    alert('Elige al menos un día de la semana.');
+    return;
+  }
+
   const submitBtn = form.querySelector('button[type="submit"]');
   submitBtn.disabled = true;
   submitBtn.textContent = 'Guardando...';
@@ -596,10 +627,11 @@ form.addEventListener('submit', async e => {
     id,
     title: document.getElementById('taskTitle').value.trim(),
     description: document.getElementById('taskDescription').value.trim(),
-    user: document.getElementById('taskUser').value,
+    user: existing?.user || state.sessionUser || 'u1',
     repeats: document.getElementById('taskRepeats').checked,
     repeatEvery: parseInt(document.getElementById('taskRepeatEvery').value, 10) || 1,
-    repeatUnit: document.getElementById('taskRepeatUnit').value,
+    repeatUnit,
+    repeatDays: repeatUnit === 'weekdays' ? repeatDays : null,
     dueDate: document.getElementById('taskDueDate').value || null,
     time: document.getElementById('taskTime').value || null,
     image: imageValue,
