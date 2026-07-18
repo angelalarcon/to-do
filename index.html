@@ -725,43 +725,15 @@ document.getElementById('nextWeekBtn').addEventListener('click', () => {
   render();
 });
 
-/* ------------------------- PWA: manifest e ícono por sesión ------------------------- */
-function squareIcon(src, size = 512) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = size; canvas.height = size;
-      const ctx = canvas.getContext('2d');
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, size, size);
-      const scale = Math.min(size / img.width, size / img.height);
-      const w = img.width * scale, h = img.height * scale;
-      ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
-      canvas.toBlob(blob => resolve(URL.createObjectURL(blob)), 'image/png');
-    };
-    img.onerror = reject;
-    img.src = src;
-  });
-}
-
-async function setupPwaManifest() {
+/* ------------------------- PWA: manifest e ícono por sesión -------------------------
+   Se usan archivos estáticos reales (no blob: URLs): el servicio que empaqueta la PWA
+   en Android (WebAPK) necesita poder descargar el manifest y el ícono por red, y no
+   tiene acceso a blob: URLs generadas en la página. */
+function setupPwaManifest() {
   const isAnais = state.sessionUser === 'u2';
-  const iconSrc = isAnais ? 'img/anais.png' : 'img/angel.png';
+  const iconUrl = isAnais ? 'img/anais-icon-512.png' : 'img/angel-icon-512.png';
   const name = isAnais ? 'Tareas de Anaís' : 'Tareas de Angel';
-  const iconUrl = await squareIcon(iconSrc);
-
-  const manifest = {
-    name,
-    short_name: name,
-    start_url: location.pathname + location.search,
-    scope: location.pathname.replace(/[^/]*$/, ''),
-    display: 'standalone',
-    background_color: '#f1f5f9',
-    theme_color: '#4f46e5',
-    icons: [{ src: iconUrl, sizes: '512x512', type: 'image/png' }],
-  };
-  const manifestUrl = URL.createObjectURL(new Blob([JSON.stringify(manifest)], { type: 'application/json' }));
+  const manifestUrl = isAnais ? 'manifest-anais.json' : 'manifest-angel.json';
 
   let link = document.getElementById('manifestLink');
   if (!link) {
@@ -794,6 +766,7 @@ async function setupPwaManifest() {
   const bannerIcon = document.getElementById('installBannerIcon');
   if (bannerIcon) bannerIcon.src = iconUrl;
 }
+setupPwaManifest();
 
 /* ------------------------- PWA: instalar en escritorio ------------------------- */
 let deferredInstallPrompt = null;
@@ -842,7 +815,6 @@ document.getElementById('installDismissBtn').addEventListener('click', () => {
 
 /* ----------------------------------- Init ----------------------------------- */
 window.addEventListener('load', async () => {
-  await setupPwaManifest();
   render();
   await loadTasksFromSupabase();
   render();

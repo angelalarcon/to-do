@@ -1,0 +1,12 @@
+{
+  "name": "Tareas de Anaís",
+  "short_name": "Tareas de Anaís",
+  "start_url": "index.html?user=anais",
+  "scope": ".",
+  "display": "standalone",
+  "background_color": "#f1f5f9",
+  "theme_color": "#4f46e5",
+  "icons": [
+    { "src": "img/anais-icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
