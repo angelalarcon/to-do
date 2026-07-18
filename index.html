@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mis Tareas</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-slate-100 min-h-screen text-slate-800">
+
+<div class="max-w-3xl mx-auto p-4 pb-24">
+
+  <!-- Header -->
+  <header class="flex items-center justify-between gap-3 mb-4">
+    <h1 class="text-2xl font-bold">✅ Mis Tareas</h1>
+  </header>
+  <div class="flex w-full overflow-hidden h-32">
+    <div class="w-32 ml-auto">
+        <img src="img/anais.png" alt="anais">
+    </div>
+  </div>
+  <!-- Tabs -->
+  <div class="flex gap-1 bg-white rounded-xl shadow p-1 mb-4">
+    <button data-tab="daily" class="tab-btn flex-1 py-2 rounded-lg font-medium">Diarias</button>
+    <button data-tab="weekly" class="tab-btn flex-1 py-2 rounded-lg font-medium">Semanales</button>
+    <button data-tab="calendar" class="tab-btn flex-1 py-2 rounded-lg font-medium">Calendario</button>
+  </div>
+
+  <!-- Daily -->
+  <section id="daily-tab" class="tab-panel">
+    <h3 class="font-semibold text-sm text-slate-500 mb-2">Horario de hoy</h3>
+    <div id="dailySchedule" class="bg-white rounded-xl shadow max-h-80 overflow-y-auto mb-4"></div>
+    <h3 class="font-semibold text-sm text-slate-500 mb-2">Todas las tareas diarias</h3>
+    <div id="dailyList" class="space-y-3"></div>
+  </section>
+
+  <!-- Weekly -->
+  <section id="weekly-tab" class="tab-panel">
+    <div class="flex items-center justify-between mb-3">
+      <button id="prevWeekBtn" class="bg-white shadow px-3 py-1 rounded-lg">←</button>
+      <h2 id="weekLabel" class="font-semibold text-lg"></h2>
+      <button id="nextWeekBtn" class="bg-white shadow px-3 py-1 rounded-lg">→</button>
+    </div>
+    <div id="weekGrid" class="grid grid-cols-7 gap-1 mb-4"></div>
+    <h3 class="font-semibold text-sm text-slate-500 mb-2">Todas las tareas semanales</h3>
+    <div id="weeklyList" class="space-y-3"></div>
+  </section>
+
+  <!-- Calendar -->
+  <section id="calendar-tab" class="tab-panel hidden">
+    <div class="flex items-center justify-between mb-3">
+      <button id="prevMonthBtn" class="bg-white shadow px-3 py-1 rounded-lg">←</button>
+      <h2 id="calendarLabel" class="font-semibold text-lg"></h2>
+      <button id="nextMonthBtn" class="bg-white shadow px-3 py-1 rounded-lg">→</button>
+    </div>
+    <div id="calendarGrid" class="grid grid-cols-7 gap-1 text-center text-sm"></div>
+    <div id="calendarDayDetail" class="mt-4 space-y-3"></div>
+  </section>
+
+  <!-- Empty state -->
+  <p id="emptyState" class="hidden text-center text-slate-400 mt-10">No hay tareas todavía. Toca el botón + para agregar una.</p>
+
+</div>
+
+<!-- Floating add button -->
+<button id="openAddBtn" class="fixed bottom-6 right-6 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full w-20 h-20 text-3xl shadow-lg leading-none">+</button>
+
+<!-- Modal -->
+<div id="taskModal" class="hidden fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+  <form id="taskForm" class="bg-white rounded-2xl shadow-xl w-full max-w-md p-5 space-y-3 max-h-[90vh] overflow-y-auto">
+    <div class="flex items-center justify-between">
+      <h3 id="modalTitle" class="text-lg font-bold">Nueva tarea</h3>
+      <button type="button" id="closeModalBtn" class="text-slate-400 text-2xl leading-none">&times;</button>
+    </div>
+
+    <input type="hidden" id="taskId" />
+
+    <div>
+      <label class="text-sm font-medium">Imagen</label>
+      <input type="file" id="taskImage" accept="image/*" class="block w-full text-sm mt-1" />
+      <img id="taskImagePreview" class="hidden mt-2 w-24 h-24 object-cover rounded-lg" />
+    </div>
+
+    <div>
+      <label class="text-sm font-medium">Título</label>
+      <input type="text" id="taskTitle" required class="block w-full border border-slate-300 rounded-lg px-3 py-2 mt-1" placeholder="Ej. Lavar los platos" />
+    </div>
+
+    <div>
+      <label class="text-sm font-medium">Descripción</label>
+      <textarea id="taskDescription" rows="2" class="block w-full border border-slate-300 rounded-lg px-3 py-2 mt-1" placeholder="Detalles de la tarea"></textarea>
+    </div>
+
+    <div>
+      <label class="text-sm font-medium">Asignar a</label>
+      <select id="taskUser" class="block w-full border border-slate-300 rounded-lg px-3 py-2 mt-1"></select>
+    </div>
+
+    <div class="flex items-center gap-2">
+      <input type="checkbox" id="taskRepeats" class="w-4 h-4" />
+      <label for="taskRepeats" class="text-sm font-medium">¿Se repite?</label>
+    </div>
+
+    <div id="repeatFields" class="hidden flex items-center gap-2">
+      <span class="text-sm">Cada</span>
+      <input type="number" id="taskRepeatEvery" min="1" value="1" class="w-16 border border-slate-300 rounded-lg px-2 py-1" />
+      <select id="taskRepeatUnit" class="border border-slate-300 rounded-lg px-2 py-1">
+        <option value="day">día(s)</option>
+        <option value="week">semana(s)</option>
+        <option value="month">mes(es)</option>
+      </select>
+    </div>
+
+    <div>
+      <label class="text-sm font-medium">Fecha de entrega (opcional)</label>
+      <input type="date" id="taskDueDate" class="block w-full border border-slate-300 rounded-lg px-3 py-2 mt-1" />
+    </div>
+
+    <div>
+      <label class="text-sm font-medium">Hora (opcional, para el horario diario)</label>
+      <input type="time" id="taskTime" class="block w-full border border-slate-300 rounded-lg px-3 py-2 mt-1" />
+      <p class="text-xs text-slate-400 mt-1">Si la dejas vacía, la tarea aparecerá en el bloque de la hora actual mientras no esté hecha.</p>
+    </div>
+
+    <div class="flex justify-between items-center pt-2">
+      <button type="button" id="deleteTaskBtn" class="hidden text-red-600 text-sm font-medium">🗑️ Eliminar</button>
+      <div class="flex gap-2 ml-auto">
+        <button type="button" id="cancelModalBtn" class="px-4 py-2 rounded-lg bg-slate-100">Cancelar</button>
+        <button type="submit" class="px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium">Guardar</button>
+      </div>
+    </div>
+  </form>
+</div>
+
+<script>
+/* ---------------------------------------------------------------------
+   CONFIGURACIÓN DE SUPABASE (proyecto de angelalarcon.aa@gmail.com)
+   1. Entra a https://supabase.com con angelalarcon.aa@gmail.com y crea
+      un proyecto nuevo (gratis).
+   2. Ve a "Table editor" > "New table" y crea la tabla `tasks` con este SQL
+      en el "SQL editor":
+
+        create table tasks (
+          id text primary key,
+          title text not null,
+          description text,
+          user_key text not null,
+          repeats boolean not null default false,
+          repeat_every int not null default 1,
+          repeat_unit text,
+          due_date date,
+          time text,
+          image_url text,
+          completed_dates jsonb not null default '[]',
+          created_at bigint not null
+        );
+        alter table tasks enable row level security;
+        create policy "allow all" on tasks for all
+          using (true) with check (true);
+
+      (La política "allow all" es intencional: es una app privada de 2
+      personas sin backend propio, comparten el link con el user id.)
+
+   3. Ve a "Storage" > "New bucket", créalo público, con el nombre
+      "task-images" para guardar las fotos de las tareas. Luego en
+      "SQL editor" agrega estas políticas para que la app (con la
+      anon key) pueda subir y leer imágenes:
+
+        create policy "public read task-images" on storage.objects
+          for select using (bucket_id = 'task-images');
+        create policy "public upload task-images" on storage.objects
+          for insert with check (bucket_id = 'task-images');
+
+   4. Ve a "Project Settings" > "API" y copia el "Project URL" y la
+      "anon public key". Pégalos abajo.
+
+   Mientras no reemplaces estos valores, la app sigue funcionando
+   guardando todo en localStorage (modo local, sin sincronizar).
+--------------------------------------------------------------------- */
+const SUPABASE_URL = 'https://TU-PROYECTO.supabase.co';
+const SUPABASE_ANON_KEY = 'TU_ANON_KEY';
+const IMAGES_BUCKET = 'task-images';
+
+const sb = (SUPABASE_URL.includes('TU-PROYECTO') || !window.supabase)
+  ? null
+  : window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+/* ------------------------- Sesión por parámetro de URL ------------------------- */
+function getSessionUser() {
+  const params = new URLSearchParams(location.search);
+  const u = (params.get('user') || '').toLowerCase();
+  if (u === 'angel') return 'u1';
+  if (u === 'anais') return 'u2';
+  return null;
+}
+
+/* ------------------------- Estado y persistencia ------------------------- */
+const state = {
+  tasks: JSON.parse(localStorage.getItem('tasks') || '[]'),
+  users: { u1: 'Angel', u2: 'Anaís' },
+  sessionUser: getSessionUser(),
+  activeTab: 'daily',
+  filterUser: getSessionUser() || 'all',
+  calendarMonth: startOfMonth(new Date()),
+  weekStart: startOfWeek(new Date()),
+  selectedDay: null,
+};
+
+function persist() {
+  localStorage.setItem('tasks', JSON.stringify(state.tasks));
+}
+
+/* --------------------------------- Supabase --------------------------------- */
+function taskToRow(t) {
+  return {
+    id: t.id,
+    title: t.title,
+    description: t.description || null,
+    user_key: t.user,
+    repeats: t.repeats,
+    repeat_every: t.repeatEvery,
+    repeat_unit: t.repeatUnit,
+    due_date: t.dueDate,
+    time: t.time,
+    image_url: t.image,
+    completed_dates: t.completedDates || [],
+    created_at: t.createdAt,
+  };
+}
+function rowToTask(r) {
+  return {
+    id: r.id,
+    title: r.title,
+    description: r.description || '',
+    user: r.user_key,
+    repeats: r.repeats,
+    repeatEvery: r.repeat_every,
+    repeatUnit: r.repeat_unit,
+    dueDate: r.due_date,
+    time: r.time,
+    image: r.image_url,
+    completedDates: r.completed_dates || [],
+    createdAt: r.created_at,
+  };
+}
+
+async function loadTasksFromSupabase() {
+  if (!sb) return;
+  const { data, error } = await sb.from('tasks').select('*').order('created_at', { ascending: true });
+  if (error) { console.error('Error cargando tareas de Supabase:', error.message); return; }
+  state.tasks = data.map(rowToTask);
+  persist();
+}
+
+async function saveTaskToSupabase(task) {
+  if (!sb) return;
+  const { error } = await sb.from('tasks').upsert(taskToRow(task));
+  if (error) alert('Error guardando en Supabase: ' + error.message);
+}
+
+async function deleteTaskFromSupabase(id) {
+  if (!sb) return;
+  const { error } = await sb.from('tasks').delete().eq('id', id);
+  if (error) console.error('Error eliminando en Supabase:', error.message);
+}
+
+async function uploadImageToSupabase(taskId, dataUrl) {
+  if (!sb || !dataUrl || !dataUrl.startsWith('data:')) return dataUrl;
+  try {
+    const blob = await (await fetch(dataUrl)).blob();
+    const path = `${taskId}-${Math.random().toString(36).slice(2, 8)}.jpg`;
+    const { error } = await sb.storage.from(IMAGES_BUCKET).upload(path, blob, { contentType: 'image/jpeg', upsert: true });
+    if (error) { console.error('Error subiendo imagen a Supabase:', error.message); return dataUrl; }
+    const { data } = sb.storage.from(IMAGES_BUCKET).getPublicUrl(path);
+    return data.publicUrl;
+  } catch (err) {
+    console.error('Error subiendo imagen:', err);
+    return dataUrl;
+  }
+}
+
+/* ------------------------------ Utilidades ------------------------------ */
+function uid() {
+  return 'id-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+}
+function formatDate(d) {
+  const y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, '0'), day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+function startOfDay(d) { const c = new Date(d); c.setHours(0, 0, 0, 0); return c; }
+function startOfMonth(d) { return new Date(d.getFullYear(), d.getMonth(), 1); }
+function startOfWeek(d) {
+  const c = startOfDay(d);
+  const offset = (c.getDay() + 6) % 7; // lunes = 0
+  c.setDate(c.getDate() - offset);
+  return c;
+}
+function todayStr() { return formatDate(new Date()); }
+
+function resizeImage(file, maxSize = 320) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > height && width > maxSize) { height *= maxSize / width; width = maxSize; }
+        else if (height > maxSize) { width *= maxSize / height; height = maxSize; }
+        const canvas = document.createElement('canvas');
+        canvas.width = width; canvas.height = height;
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.8));
+      };
+      img.onerror = reject;
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+/* --------------------------- Lógica de repetición ------------------------- */
+function taskStartDate(task) {
+  return startOfDay(task.dueDate ? new Date(task.dueDate + 'T00:00:00') : new Date(task.createdAt));
+}
+function occursOn(task, date) {
+  const day = startOfDay(date);
+  if (!task.repeats) {
+    return task.dueDate === formatDate(day);
+  }
+  const start = taskStartDate(task);
+  if (day < start) return false;
+  const diffDays = Math.round((day - start) / 86400000);
+  const every = Math.max(1, parseInt(task.repeatEvery, 10) || 1);
+  if (task.repeatUnit === 'day') return diffDays % every === 0;
+  if (task.repeatUnit === 'week') return diffDays % (7 * every) === 0;
+  if (task.repeatUnit === 'month') {
+    if (day.getDate() !== start.getDate()) return false;
+    const monthDiff = (day.getFullYear() - start.getFullYear()) * 12 + (day.getMonth() - start.getMonth());
+    return monthDiff >= 0 && monthDiff % every === 0;
+  }
+  return false;
+}
+function visibleForFilter(task) {
+  if (state.filterUser === 'all') return true;
+  return task.user === state.filterUser || task.user === 'both';
+}
+
+/* --------------------------------- Render -------------------------------- */
+function render() {
+  renderUserSelect();
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    const active = btn.dataset.tab === state.activeTab;
+    btn.className = 'tab-btn flex-1 py-2 rounded-lg font-medium ' + (active ? 'bg-indigo-600 text-white' : 'text-slate-500');
+  });
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+  document.getElementById(state.activeTab + '-tab').classList.remove('hidden');
+
+  if (state.activeTab === 'daily') {
+    renderDailySchedule();
+    renderSimpleTab('dailyList', t => t.repeats && t.repeatUnit === 'day');
+  }
+  if (state.activeTab === 'weekly') {
+    renderWeekCalendar();
+    renderSimpleTab('weeklyList', t => t.repeats && t.repeatUnit === 'week');
+  }
+  if (state.activeTab === 'calendar') renderCalendar();
+
+  document.getElementById('emptyState').classList.toggle('hidden', state.tasks.length > 0);
+}
+
+function userLabel(userKey) {
+  if (userKey === 'both') return 'Ambos';
+  return state.users[userKey] || userKey;
+}
+
+function taskCardHtml(task, opts = {}) {
+  const done = opts.showCheck && task.completedDates?.includes(opts.dateKey || todayStr());
+  const repeatInfo = task.repeats ? `🔁 cada ${task.repeatEvery} ${{ day: 'día(s)', week: 'semana(s)', month: 'mes(es)' }[task.repeatUnit]}` : '';
+  const dueInfo = task.dueDate ? `📅 ${task.dueDate}` : '';
+  const timeInfo = task.time ? `🕐 ${task.time}` : '';
+
+  if (opts.compact) {
+    return `
+    <div class="bg-white rounded-lg shadow-sm px-2 py-1.5 flex items-center gap-2" data-id="${task.id}">
+      <input type="checkbox" data-action="toggleDone" data-date="${opts.dateKey || todayStr()}" ${done ? 'checked' : ''} class="w-4 h-4 shrink-0" />
+      <span data-action="edit" class="text-sm truncate flex-1 cursor-pointer ${done ? 'line-through text-slate-400' : ''}">${escapeHtml(task.title)}</span>
+      ${timeInfo ? `<span class="text-[10px] text-slate-400 shrink-0">${timeInfo}</span>` : ''}
+      <span class="text-[10px] bg-slate-100 rounded-full px-1.5 py-0.5 shrink-0">${userLabel(task.user)}</span>
+    </div>`;
+  }
+
+  const img = task.image
+    ? `<img src="${task.image}" class="w-14 h-14 object-cover rounded-lg" />`
+    : `<div class="w-14 h-14 rounded-lg bg-slate-100 flex items-center justify-center text-2xl">🖼️</div>`;
+  return `
+  <div class="bg-white rounded-xl shadow p-3 flex gap-3 items-start" data-id="${task.id}">
+    ${img}
+    <div class="flex-1 min-w-0">
+      <div class="flex items-center gap-2">
+        ${opts.showCheck ? `<input type="checkbox" data-action="toggleDone" data-date="${opts.dateKey || todayStr()}" ${done ? 'checked' : ''} class="w-5 h-5" />` : ''}
+        <h4 class="font-semibold truncate ${done ? 'line-through text-slate-400' : ''}">${escapeHtml(task.title)}</h4>
+      </div>
+      ${task.description ? `<p class="text-sm text-slate-500 truncate">${escapeHtml(task.description)}</p>` : ''}
+      <div class="flex flex-wrap gap-2 mt-1 text-xs text-slate-500">
+        <span class="bg-slate-100 rounded-full px-2 py-0.5">${userLabel(task.user)}</span>
+        ${repeatInfo ? `<span class="bg-slate-100 rounded-full px-2 py-0.5">${repeatInfo}</span>` : ''}
+        ${timeInfo ? `<span class="bg-slate-100 rounded-full px-2 py-0.5">${timeInfo}</span>` : ''}
+        ${dueInfo ? `<span class="bg-slate-100 rounded-full px-2 py-0.5">${dueInfo}</span>` : ''}
+      </div>
+    </div>
+    <div class="flex flex-col gap-1 items-end">
+      <button data-action="edit" class="text-slate-400 hover:text-indigo-600">✏️</button>
+    </div>
+  </div>`;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function renderSimpleTab(containerId, matcher) {
+  const container = document.getElementById(containerId);
+  const list = state.tasks.filter(t => matcher(t) && visibleForFilter(t));
+  container.innerHTML = list.length
+    ? list.map(t => taskCardHtml(t, { showCheck: true })).join('')
+    : `<p class="text-center text-slate-400 mt-6">No hay tareas en esta pestaña.</p>`;
+}
+
+function renderDailySchedule() {
+  const container = document.getElementById('dailySchedule');
+  const now = new Date();
+  const currentHour = now.getHours();
+  const dayTasks = state.tasks.filter(t => visibleForFilter(t) && t.repeats && t.repeatUnit === 'day' && occursOn(t, now));
+
+  let html = '';
+  for (let h = 0; h < 24; h++) {
+    const hourTasks = dayTasks.filter(t => t.time ? parseInt(t.time.split(':')[0], 10) === h : h === currentHour);
+    const isNow = h === currentHour;
+    html += `
+      <div class="flex gap-2 border-t border-slate-100 px-2 py-1 ${isNow ? 'bg-indigo-50' : ''}" data-hour="${h}">
+        <div class="w-12 shrink-0 text-xs pt-1 ${isNow ? 'text-indigo-600 font-semibold' : 'text-slate-400'}">${String(h).padStart(2, '0')}:00</div>
+        <div class="flex-1 space-y-1 py-0.5">
+          ${hourTasks.map(t => taskCardHtml(t, { showCheck: true, dateKey: todayStr(), compact: true })).join('')}
+        </div>
+      </div>`;
+  }
+  container.innerHTML = html;
+
+  const nowRow = container.querySelector(`[data-hour="${currentHour}"]`);
+  if (nowRow) nowRow.scrollIntoView({ block: 'center' });
+}
+
+function renderWeekCalendar() {
+  const label = `${formatDate(state.weekStart)} — ${formatDate(new Date(state.weekStart.getTime() + 6 * 86400000))}`;
+  document.getElementById('weekLabel').textContent = label;
+
+  const grid = document.getElementById('weekGrid');
+  const dayNames = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+  let html = '';
+  for (let i = 0; i < 7; i++) {
+    const date = new Date(state.weekStart.getFullYear(), state.weekStart.getMonth(), state.weekStart.getDate() + i);
+    const dateKey = formatDate(date);
+    const isToday = dateKey === todayStr();
+    const dayTasks = state.tasks.filter(t => visibleForFilter(t) && t.repeats && t.repeatUnit === 'week' && occursOn(t, date));
+    html += `
+      <div class="bg-white rounded-lg shadow p-1.5 min-h-[7rem] ${isToday ? 'ring-2 ring-indigo-400' : ''}">
+        <div class="text-center text-xs font-semibold ${isToday ? 'text-indigo-600' : 'text-slate-500'}">${dayNames[i]}<br>${date.getDate()}</div>
+        <div class="mt-1 space-y-1">
+          ${dayTasks.map(t => taskCardHtml(t, { showCheck: true, dateKey, compact: true })).join('')}
+        </div>
+      </div>`;
+  }
+  grid.innerHTML = html;
+}
+
+function renderUserSelect() {
+  const sel = document.getElementById('taskUser');
+  sel.innerHTML = `
+    <option value="u1">${state.users.u1}</option>
+    <option value="u2">${state.users.u2}</option>
+    <option value="both">Ambos</option>`;
+}
+
+function renderCalendar() {
+  const label = state.calendarMonth.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+  document.getElementById('calendarLabel').textContent = label.charAt(0).toUpperCase() + label.slice(1);
+
+  const grid = document.getElementById('calendarGrid');
+  const year = state.calendarMonth.getFullYear(), month = state.calendarMonth.getMonth();
+  const firstDay = new Date(year, month, 1);
+  const startOffset = (firstDay.getDay() + 6) % 7; // lunes = 0
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+  let html = ['L', 'M', 'M', 'J', 'V', 'S', 'D'].map(d => `<div class="font-semibold text-slate-400">${d}</div>`).join('');
+  for (let i = 0; i < startOffset; i++) html += `<div></div>`;
+
+  for (let d = 1; d <= daysInMonth; d++) {
+    const date = new Date(year, month, d);
+    const dateKey = formatDate(date);
+    const dayTasks = state.tasks.filter(t => visibleForFilter(t) && occursOn(t, date));
+    const isToday = dateKey === todayStr();
+    const isSelected = state.selectedDay === dateKey;
+    html += `
+      <button data-day="${dateKey}" class="rounded-lg p-1.5 h-16 flex flex-col items-center justify-start
+        ${isSelected ? 'bg-indigo-600 text-white' : isToday ? 'bg-indigo-100' : 'bg-white'} shadow">
+        <span class="text-xs">${d}</span>
+        ${dayTasks.length ? `<span class="mt-1 w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-white' : 'bg-indigo-500'}"></span><span class="text-[10px] ${isSelected ? 'text-white' : 'text-slate-400'}">${dayTasks.length}</span>` : ''}
+      </button>`;
+  }
+  grid.innerHTML = html;
+
+  const detail = document.getElementById('calendarDayDetail');
+  if (state.selectedDay) {
+    const date = new Date(state.selectedDay + 'T00:00:00');
+    const dayTasks = state.tasks.filter(t => visibleForFilter(t) && occursOn(t, date));
+    detail.innerHTML = `<h3 class="font-semibold mb-2">Tareas del ${state.selectedDay}</h3>` +
+      (dayTasks.length
+        ? dayTasks.map(t => taskCardHtml(t, { showCheck: true, dateKey: state.selectedDay })).join('')
+        : `<p class="text-slate-400 text-sm">No hay tareas ese día.</p>`);
+  } else {
+    detail.innerHTML = '';
+  }
+}
+
+/* --------------------------------- Modal --------------------------------- */
+const modal = document.getElementById('taskModal');
+const form = document.getElementById('taskForm');
+let pendingImage = null;
+
+function openModal(task = null) {
+  form.reset();
+  pendingImage = task?.image || null;
+  document.getElementById('taskId').value = task?.id || '';
+  document.getElementById('modalTitle').textContent = task ? 'Editar tarea' : 'Nueva tarea';
+  document.getElementById('taskTitle').value = task?.title || '';
+  document.getElementById('taskDescription').value = task?.description || '';
+  document.getElementById('taskUser').value = task?.user || state.sessionUser || 'u1';
+  document.getElementById('taskRepeats').checked = !!task?.repeats;
+  document.getElementById('repeatFields').classList.toggle('hidden', !task?.repeats);
+  document.getElementById('taskRepeatEvery').value = task?.repeatEvery || 1;
+  document.getElementById('taskRepeatUnit').value = task?.repeatUnit || 'day';
+  document.getElementById('taskDueDate').value = task?.dueDate || '';
+  document.getElementById('taskTime').value = task?.time || '';
+  document.getElementById('deleteTaskBtn').classList.toggle('hidden', !task);
+  const preview = document.getElementById('taskImagePreview');
+  if (task?.image) { preview.src = task.image; preview.classList.remove('hidden'); }
+  else { preview.classList.add('hidden'); }
+  modal.classList.remove('hidden');
+  modal.classList.add('flex');
+}
+function closeModal() {
+  modal.classList.add('hidden');
+  modal.classList.remove('flex');
+}
+
+document.getElementById('openAddBtn').addEventListener('click', () => openModal());
+document.getElementById('closeModalBtn').addEventListener('click', closeModal);
+document.getElementById('cancelModalBtn').addEventListener('click', closeModal);
+
+document.getElementById('taskRepeats').addEventListener('change', e => {
+  document.getElementById('repeatFields').classList.toggle('hidden', !e.target.checked);
+});
+
+document.getElementById('taskImage').addEventListener('change', async e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  pendingImage = await resizeImage(file);
+  const preview = document.getElementById('taskImagePreview');
+  preview.src = pendingImage;
+  preview.classList.remove('hidden');
+});
+
+form.addEventListener('submit', async e => {
+  e.preventDefault();
+  const id = document.getElementById('taskId').value || uid();
+  const existing = state.tasks.find(t => t.id === id);
+
+  const submitBtn = form.querySelector('button[type="submit"]');
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Guardando...';
+
+  const imageValue = await uploadImageToSupabase(id, pendingImage);
+
+  const task = {
+    id,
+    title: document.getElementById('taskTitle').value.trim(),
+    description: document.getElementById('taskDescription').value.trim(),
+    user: document.getElementById('taskUser').value,
+    repeats: document.getElementById('taskRepeats').checked,
+    repeatEvery: parseInt(document.getElementById('taskRepeatEvery').value, 10) || 1,
+    repeatUnit: document.getElementById('taskRepeatUnit').value,
+    dueDate: document.getElementById('taskDueDate').value || null,
+    time: document.getElementById('taskTime').value || null,
+    image: imageValue,
+    createdAt: existing?.createdAt || Date.now(),
+    completedDates: existing?.completedDates || [],
+  };
+  if (existing) Object.assign(existing, task);
+  else state.tasks.push(task);
+  persist();
+  closeModal();
+  render();
+
+  submitBtn.disabled = false;
+  submitBtn.textContent = 'Guardar';
+  saveTaskToSupabase(task);
+});
+
+document.getElementById('deleteTaskBtn').addEventListener('click', () => {
+  const id = document.getElementById('taskId').value;
+  if (!id) return;
+  if (!confirm('¿Eliminar esta tarea?')) return;
+  state.tasks = state.tasks.filter(t => t.id !== id);
+  persist();
+  closeModal();
+  render();
+  deleteTaskFromSupabase(id);
+});
+
+/* ------------------------------ Delegación de eventos ------------------------------ */
+document.body.addEventListener('click', e => {
+  const tabBtn = e.target.closest('[data-tab]');
+  if (tabBtn) { state.activeTab = tabBtn.dataset.tab; render(); return; }
+
+  const dayBtn = e.target.closest('[data-day]');
+  if (dayBtn) { state.selectedDay = state.selectedDay === dayBtn.dataset.day ? null : dayBtn.dataset.day; render(); return; }
+
+  const card = e.target.closest('[data-id]');
+  if (!card) return;
+  const task = state.tasks.find(t => t.id === card.dataset.id);
+  if (!task) return;
+
+  const actionBtn = e.target.closest('[data-action]');
+  if (!actionBtn) return;
+  const action = actionBtn.dataset.action;
+  if (action === 'edit') openModal(task);
+});
+
+document.body.addEventListener('change', e => {
+  const checkbox = e.target.closest('[data-action="toggleDone"]');
+  if (!checkbox) return;
+  const card = e.target.closest('[data-id]');
+  const task = state.tasks.find(t => t.id === card.dataset.id);
+  const dateKey = checkbox.dataset.date;
+  task.completedDates = task.completedDates || [];
+  const idx = task.completedDates.indexOf(dateKey);
+  if (idx >= 0) task.completedDates.splice(idx, 1);
+  else task.completedDates.push(dateKey);
+  persist();
+  render();
+  saveTaskToSupabase(task);
+});
+
+document.getElementById('prevMonthBtn').addEventListener('click', () => {
+  state.calendarMonth = new Date(state.calendarMonth.getFullYear(), state.calendarMonth.getMonth() - 1, 1);
+  state.selectedDay = null;
+  render();
+});
+document.getElementById('nextMonthBtn').addEventListener('click', () => {
+  state.calendarMonth = new Date(state.calendarMonth.getFullYear(), state.calendarMonth.getMonth() + 1, 1);
+  state.selectedDay = null;
+  render();
+});
+
+document.getElementById('prevWeekBtn').addEventListener('click', () => {
+  state.weekStart = new Date(state.weekStart.getFullYear(), state.weekStart.getMonth(), state.weekStart.getDate() - 7);
+  render();
+});
+document.getElementById('nextWeekBtn').addEventListener('click', () => {
+  state.weekStart = new Date(state.weekStart.getFullYear(), state.weekStart.getMonth(), state.weekStart.getDate() + 7);
+  render();
+});
+
+/* ----------------------------------- Init ----------------------------------- */
+window.addEventListener('load', async () => {
+  render();
+  await loadTasksFromSupabase();
+  render();
+
+  setInterval(() => { if (state.activeTab === 'daily') renderDailySchedule(); }, 60000);
+});
+</script>
+</body>
+</html>
