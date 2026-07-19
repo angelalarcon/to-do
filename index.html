@@ -133,6 +133,18 @@
         <label class="flex items-center gap-1 text-xs bg-slate-100 rounded-full px-2 py-1"><input type="checkbox" class="repeatDayCheckbox w-3.5 h-3.5" value="5" /> Sáb</label>
         <label class="flex items-center gap-1 text-xs bg-slate-100 rounded-full px-2 py-1"><input type="checkbox" class="repeatDayCheckbox w-3.5 h-3.5" value="6" /> Dom</label>
       </div>
+      <div id="repeatWeekdayField" class="hidden mt-2">
+        <label class="text-sm">Día de la semana</label>
+        <select id="taskRepeatWeekday" class="block border border-slate-300 rounded-lg px-2 py-1 mt-1">
+          <option value="0">Lunes</option>
+          <option value="1">Martes</option>
+          <option value="2">Miércoles</option>
+          <option value="3">Jueves</option>
+          <option value="4">Viernes</option>
+          <option value="5">Sábado</option>
+          <option value="6">Domingo</option>
+        </select>
+      </div>
     </div>
 
     <div>
@@ -366,7 +378,18 @@ function occursOn(task, date) {
     const dow = (day.getDay() + 6) % 7; // lunes = 0
     return (task.repeatDays || []).includes(dow);
   }
-  if (task.repeatUnit === 'week') return diffDays % (7 * every) === 0;
+  if (task.repeatUnit === 'week') {
+    const weekday = task.repeatDays?.[0];
+    if (weekday == null) return diffDays % (7 * every) === 0;
+    const dow = (day.getDay() + 6) % 7; // lunes = 0
+    if (dow !== weekday) return false;
+    const startDow = (start.getDay() + 6) % 7;
+    const anchor = new Date(start);
+    anchor.setDate(anchor.getDate() + ((weekday - startDow + 7) % 7));
+    if (day < anchor) return false;
+    const weeksSince = Math.round((day - anchor) / (7 * 86400000));
+    return weeksSince % every === 0;
+  }
   if (task.repeatUnit === 'month') {
     if (day.getDate() !== start.getDate()) return false;
     const monthDiff = (day.getFullYear() - start.getFullYear()) * 12 + (day.getMonth() - start.getMonth());
@@ -426,7 +449,9 @@ function taskCardHtml(task, opts = {}) {
   const done = opts.showCheck && task.completedDates?.includes(opts.dateKey || todayStr());
   const repeatInfo = !task.repeats ? '' : task.repeatUnit === 'weekdays'
     ? `🔁 ${(task.repeatDays || []).slice().sort((a, b) => a - b).map(d => DAY_ABBR[d]).join(', ') || 'sin días'}`
-    : `🔁 cada ${task.repeatEvery} ${{ day: 'día(s)', week: 'semana(s)', month: 'mes(es)' }[task.repeatUnit]}`;
+    : task.repeatUnit === 'week' && task.repeatDays?.length
+      ? `🔁 cada ${task.repeatEvery} semana(s) (${DAY_ABBR[task.repeatDays[0]]})`
+      : `🔁 cada ${task.repeatEvery} ${{ day: 'día(s)', week: 'semana(s)', month: 'mes(es)' }[task.repeatUnit]}`;
   const dueInfo = task.dueDate ? `📅 ${task.dueDate}` : '';
   const timeInfo = task.time ? `🕐 ${task.time}` : '';
 
@@ -593,6 +618,12 @@ function openModal(task = null) {
   document.querySelectorAll('.repeatDayCheckbox').forEach(cb => {
     cb.checked = (task?.repeatDays || []).includes(parseInt(cb.value, 10));
   });
+  const defaultWeekday = task?.dueDate
+    ? (new Date(task.dueDate + 'T00:00:00').getDay() + 6) % 7
+    : (new Date().getDay() + 6) % 7;
+  document.getElementById('taskRepeatWeekday').value = (task?.repeatUnit === 'week' && task?.repeatDays?.length)
+    ? task.repeatDays[0]
+    : defaultWeekday;
   updateRepeatUnitUI();
   document.getElementById('taskDueDate').value = task?.dueDate || '';
   document.getElementById('taskTime').value = task?.time || '';
@@ -609,8 +640,11 @@ function closeModal() {
 }
 
 function updateRepeatUnitUI() {
-  const isWeekdays = document.getElementById('taskRepeatUnit').value === 'weekdays';
+  const unit = document.getElementById('taskRepeatUnit').value;
+  const isWeekdays = unit === 'weekdays';
+  const isWeek = unit === 'week';
   document.getElementById('repeatWeekdaysField').classList.toggle('hidden', !isWeekdays);
+  document.getElementById('repeatWeekdayField').classList.toggle('hidden', !isWeek);
   document.getElementById('repeatEveryGroup').classList.toggle('hidden', isWeekdays);
 }
 
@@ -659,7 +693,7 @@ form.addEventListener('submit', async e => {
     repeats: document.getElementById('taskRepeats').checked,
     repeatEvery: parseInt(document.getElementById('taskRepeatEvery').value, 10) || 1,
     repeatUnit,
-    repeatDays: repeatUnit === 'weekdays' ? repeatDays : null,
+    repeatDays: repeatUnit === 'weekdays' ? repeatDays : repeatUnit === 'week' ? [parseInt(document.getElementById('taskRepeatWeekday').value, 10)] : null,
     dueDate: document.getElementById('taskDueDate').value || null,
     time: document.getElementById('taskTime').value || null,
     image: imageValue,
