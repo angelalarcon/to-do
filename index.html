@@ -9,6 +9,7 @@
 <title>Mis Tareas</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
 </head>
 <body class="bg-slate-100 min-h-screen text-slate-800">
 
@@ -32,10 +33,13 @@
 
   <!-- Daily -->
   <section id="daily-tab" class="tab-panel">
-    <h3 class="font-semibold text-sm text-slate-500 mb-2">Horario de hoy</h3>
+    <div class="flex items-center justify-between mb-2">
+      <h3 id="dailyScheduleTitle" class="font-semibold text-sm text-slate-500">Horario de hoy</h3>
+      <button id="backToTodayBtn" class="hidden text-xs text-indigo-600 font-medium">Volver a hoy</button>
+    </div>
     <div id="dailySchedule" class="bg-white rounded-xl shadow max-h-80 overflow-y-auto mb-4"></div>
-    <h3 class="font-semibold text-sm text-slate-500 mb-2">Todas las tareas diarias</h3>
-    <div id="dailyList" class="space-y-3"></div>
+    <h3 id="dailyListTitle" class="font-semibold text-sm text-slate-500 mb-2">Para hoy</h3>
+    <div id="dailyList" class="grid grid-cols-3 gap-3"></div>
   </section>
 
   <!-- Weekly -->
@@ -58,7 +62,6 @@
       <button id="nextMonthBtn" class="bg-white shadow px-3 py-1 rounded-lg">→</button>
     </div>
     <div id="calendarGrid" class="grid grid-cols-7 gap-1 text-center text-sm"></div>
-    <div id="calendarDayDetail" class="mt-4 space-y-3"></div>
   </section>
 
   <!-- Empty state -->
@@ -144,7 +147,7 @@
     </div>
 
     <div class="flex justify-between items-center pt-2">
-      <button type="button" id="deleteTaskBtn" class="hidden text-red-600 text-sm font-medium">🗑️ Eliminar</button>
+      <button type="button" id="deleteTaskBtn" class="hidden text-red-600 text-sm font-medium"><i class="fa-solid fa-trash mr-1"></i>Eliminar</button>
       <div class="flex gap-2 ml-auto">
         <button type="button" id="cancelModalBtn" class="px-4 py-2 rounded-lg bg-slate-100">Cancelar</button>
         <button type="submit" class="px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium">Guardar</button>
@@ -225,7 +228,7 @@ const state = {
   filterUser: getSessionUser() || 'all',
   calendarMonth: startOfMonth(new Date()),
   weekStart: startOfWeek(new Date()),
-  selectedDay: null,
+  selectedDate: todayStr(),
 };
 
 function persist() {
@@ -395,8 +398,13 @@ function render() {
   document.getElementById(state.activeTab + '-tab').classList.remove('hidden');
 
   if (state.activeTab === 'daily') {
+    const dateKey = state.selectedDate || todayStr();
+    const isToday = dateKey === todayStr();
+    document.getElementById('dailyScheduleTitle').textContent = isToday ? 'Horario de hoy' : `Horario del ${dateKey}`;
+    document.getElementById('dailyListTitle').textContent = isToday ? 'Para hoy' : `Para el ${dateKey}`;
+    document.getElementById('backToTodayBtn').classList.toggle('hidden', isToday);
     renderDailySchedule();
-    renderSimpleTab('dailyList', t => t.repeats && (t.repeatUnit === 'day' || t.repeatUnit === 'weekdays'));
+    renderSimpleTab('dailyList', t => t.repeats && (t.repeatUnit === 'day' || t.repeatUnit === 'weekdays') && occursOn(t, new Date(dateKey + 'T00:00:00')), dateKey);
   }
   if (state.activeTab === 'weekly') {
     renderWeekCalendar();
@@ -422,6 +430,14 @@ function taskCardHtml(task, opts = {}) {
   const dueInfo = task.dueDate ? `📅 ${task.dueDate}` : '';
   const timeInfo = task.time ? `🕐 ${task.time}` : '';
 
+  if (opts.narrow) {
+    return `
+    <div class="bg-slate-50 rounded-md px-1 py-1 flex items-start gap-1" data-id="${task.id}">
+      <input type="checkbox" data-action="toggleDone" data-date="${opts.dateKey || todayStr()}" ${done ? 'checked' : ''} class="w-3 h-3 mt-0.5 shrink-0" />
+      <span data-action="edit" class="text-[11px] leading-tight break-words min-w-0 cursor-pointer ${done ? 'line-through text-slate-400' : ''}">${escapeHtml(task.title)}</span>
+    </div>`;
+  }
+
   if (opts.compact) {
     return `
     <div class="bg-white rounded-lg shadow-sm px-2 py-1.5 flex items-center gap-2" data-id="${task.id}">
@@ -433,26 +449,33 @@ function taskCardHtml(task, opts = {}) {
   }
 
   const img = task.image
-    ? `<img src="${task.image}" class="w-14 h-14 object-cover rounded-lg" />`
-    : `<div class="w-14 h-14 rounded-lg bg-slate-100 flex items-center justify-center text-2xl">🖼️</div>`;
+    ? `<img src="${task.image}" class="w-28 h-28 object-contain rounded-lg mx-auto" />`
+    : `<div class="w-28 h-28 rounded-lg bg-slate-100 flex items-center justify-center text-4xl mx-auto">🖼️</div>`;
   return `
-  <div class="bg-white rounded-xl shadow p-3 flex gap-3 items-start" data-id="${task.id}">
-    ${img}
-    <div class="flex-1 min-w-0">
-      <div class="flex items-center gap-2">
-        ${opts.showCheck ? `<input type="checkbox" data-action="toggleDone" data-date="${opts.dateKey || todayStr()}" ${done ? 'checked' : ''} class="w-5 h-5" />` : ''}
-        <h4 class="font-semibold truncate ${done ? 'line-through text-slate-400' : ''}">${escapeHtml(task.title)}</h4>
-      </div>
-      ${task.description ? `<p class="text-sm text-slate-500 truncate">${escapeHtml(task.description)}</p>` : ''}
-      <div class="flex flex-wrap gap-2 mt-1 text-xs text-slate-500">
+  <div class="bg-white rounded-xl shadow p-3" data-id="${task.id}">
+    <div class="flex items-start justify-between gap-2">
+      <h4 class="min-w-0 font-semibold truncate ${done ? 'line-through text-slate-400' : ''}">${escapeHtml(task.title)}</h4>
+      <button type="button" data-action="toggleDetails" class="shrink-0 text-slate-400 hover:text-indigo-600 transition-colors">
+        <i class="fa-solid fa-magnifying-glass"></i>
+      </button>
+    </div>
+    <div class="mt-2">${img}</div>
+    ${opts.showCheck ? `
+    <button type="button" data-action="toggleDone" data-date="${opts.dateKey || todayStr()}" class="mt-2 w-full flex items-center justify-center gap-2 py-1.5 rounded-lg text-sm font-medium transition-colors ${done ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-500'}">
+      <i class="fa-solid fa-check"></i>
+      <span>Listo</span>
+    </button>` : ''}
+    <div class="task-details hidden mt-2 pt-2 border-t border-slate-100">
+      ${task.description ? `<p class="text-sm text-slate-500">${escapeHtml(task.description)}</p>` : ''}
+      <div class="flex flex-wrap gap-2 mt-2 text-xs text-slate-500">
         <span class="bg-slate-100 rounded-full px-2 py-0.5">${userLabel(task.user)}</span>
         ${repeatInfo ? `<span class="bg-slate-100 rounded-full px-2 py-0.5">${repeatInfo}</span>` : ''}
         ${timeInfo ? `<span class="bg-slate-100 rounded-full px-2 py-0.5">${timeInfo}</span>` : ''}
         ${dueInfo ? `<span class="bg-slate-100 rounded-full px-2 py-0.5">${dueInfo}</span>` : ''}
       </div>
-    </div>
-    <div class="flex flex-col gap-1 items-end">
-      <button data-action="edit" class="text-slate-400 hover:text-indigo-600">✏️</button>
+      <div class="flex justify-end mt-2">
+        <button type="button" data-action="edit" class="text-slate-400 hover:text-indigo-600"><i class="fa-solid fa-pen"></i></button>
+      </div>
     </div>
   </div>`;
 }
@@ -461,36 +484,41 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
-function renderSimpleTab(containerId, matcher) {
+function renderSimpleTab(containerId, matcher, dateKey) {
   const container = document.getElementById(containerId);
   const list = state.tasks.filter(t => matcher(t) && visibleForFilter(t));
   container.innerHTML = list.length
-    ? list.map(t => taskCardHtml(t, { showCheck: true })).join('')
+    ? list.map(t => taskCardHtml(t, { showCheck: true, dateKey })).join('')
     : `<p class="text-center text-slate-400 mt-6">No hay tareas en esta pestaña.</p>`;
 }
 
 function renderDailySchedule() {
   const container = document.getElementById('dailySchedule');
+  const dateKey = state.selectedDate || todayStr();
+  const date = new Date(dateKey + 'T00:00:00');
+  const isToday = dateKey === todayStr();
   const now = new Date();
-  const currentHour = now.getHours();
-  const dayTasks = state.tasks.filter(t => visibleForFilter(t) && t.repeats && (t.repeatUnit === 'day' || t.repeatUnit === 'weekdays') && occursOn(t, now));
+  const nowHour = now.getHours();
+  const dayTasks = state.tasks.filter(t => visibleForFilter(t) && t.repeats && (t.repeatUnit === 'day' || t.repeatUnit === 'weekdays') && occursOn(t, date));
 
   let html = '';
   for (let h = 0; h < 24; h++) {
-    const hourTasks = dayTasks.filter(t => t.time ? parseInt(t.time.split(':')[0], 10) === h : h === currentHour);
-    const isNow = h === currentHour;
+    const hourTasks = dayTasks.filter(t => t.time ? parseInt(t.time.split(':')[0], 10) === h : h === nowHour);
+    const isNow = isToday && h === nowHour;
     html += `
       <div class="flex gap-2 border-t border-slate-100 px-2 py-1 ${isNow ? 'bg-indigo-50' : ''}" data-hour="${h}">
         <div class="w-12 shrink-0 text-xs pt-1 ${isNow ? 'text-indigo-600 font-semibold' : 'text-slate-400'}">${String(h).padStart(2, '0')}:00</div>
         <div class="flex-1 space-y-1 py-0.5">
-          ${hourTasks.map(t => taskCardHtml(t, { showCheck: true, dateKey: todayStr(), compact: true })).join('')}
+          ${hourTasks.map(t => taskCardHtml(t, { showCheck: true, dateKey, compact: true })).join('')}
         </div>
       </div>`;
   }
   container.innerHTML = html;
 
-  const nowRow = container.querySelector(`[data-hour="${currentHour}"]`);
-  if (nowRow) nowRow.scrollIntoView({ block: 'center' });
+  if (isToday) {
+    const nowRow = container.querySelector(`[data-hour="${nowHour}"]`);
+    if (nowRow) nowRow.scrollIntoView({ block: 'center' });
+  }
 }
 
 function renderWeekCalendar() {
@@ -504,12 +532,13 @@ function renderWeekCalendar() {
     const date = new Date(state.weekStart.getFullYear(), state.weekStart.getMonth(), state.weekStart.getDate() + i);
     const dateKey = formatDate(date);
     const isToday = dateKey === todayStr();
-    const dayTasks = state.tasks.filter(t => visibleForFilter(t) && t.repeats && t.repeatUnit === 'week' && occursOn(t, date));
+    const isSelected = state.selectedDate === dateKey;
+    const dayTasks = state.tasks.filter(t => visibleForFilter(t) && occursOn(t, date));
     html += `
-      <div class="bg-white rounded-lg shadow p-1.5 min-h-[7rem] ${isToday ? 'ring-2 ring-indigo-400' : ''}">
+      <div data-day="${dateKey}" class="bg-white rounded-lg shadow p-1.5 min-h-[7rem] overflow-hidden cursor-pointer ${isToday ? 'ring-2 ring-indigo-400' : ''} ${isSelected ? 'ring-2 ring-indigo-600' : ''}">
         <div class="text-center text-xs font-semibold ${isToday ? 'text-indigo-600' : 'text-slate-500'}">${dayNames[i]}<br>${date.getDate()}</div>
         <div class="mt-1 space-y-1">
-          ${dayTasks.map(t => taskCardHtml(t, { showCheck: true, dateKey, compact: true })).join('')}
+          ${dayTasks.map(t => taskCardHtml(t, { showCheck: true, dateKey, narrow: true })).join('')}
         </div>
       </div>`;
   }
@@ -534,7 +563,7 @@ function renderCalendar() {
     const dateKey = formatDate(date);
     const dayTasks = state.tasks.filter(t => visibleForFilter(t) && occursOn(t, date));
     const isToday = dateKey === todayStr();
-    const isSelected = state.selectedDay === dateKey;
+    const isSelected = state.selectedDate === dateKey;
     html += `
       <button data-day="${dateKey}" class="rounded-lg p-1.5 h-16 flex flex-col items-center justify-start
         ${isSelected ? 'bg-indigo-600 text-white' : isToday ? 'bg-indigo-100' : 'bg-white'} shadow">
@@ -543,18 +572,6 @@ function renderCalendar() {
       </button>`;
   }
   grid.innerHTML = html;
-
-  const detail = document.getElementById('calendarDayDetail');
-  if (state.selectedDay) {
-    const date = new Date(state.selectedDay + 'T00:00:00');
-    const dayTasks = state.tasks.filter(t => visibleForFilter(t) && occursOn(t, date));
-    detail.innerHTML = `<h3 class="font-semibold mb-2">Tareas del ${state.selectedDay}</h3>` +
-      (dayTasks.length
-        ? dayTasks.map(t => taskCardHtml(t, { showCheck: true, dateKey: state.selectedDay })).join('')
-        : `<p class="text-slate-400 text-sm">No hay tareas ese día.</p>`);
-  } else {
-    detail.innerHTML = '';
-  }
 }
 
 /* --------------------------------- Modal --------------------------------- */
@@ -676,18 +693,37 @@ document.body.addEventListener('click', e => {
   const tabBtn = e.target.closest('[data-tab]');
   if (tabBtn) { state.activeTab = tabBtn.dataset.tab; render(); return; }
 
-  const dayBtn = e.target.closest('[data-day]');
-  if (dayBtn) { state.selectedDay = state.selectedDay === dayBtn.dataset.day ? null : dayBtn.dataset.day; render(); return; }
-
   const card = e.target.closest('[data-id]');
-  if (!card) return;
-  const task = state.tasks.find(t => t.id === card.dataset.id);
-  if (!task) return;
+  if (card) {
+    const task = state.tasks.find(t => t.id === card.dataset.id);
+    if (!task) return;
 
-  const actionBtn = e.target.closest('[data-action]');
-  if (!actionBtn) return;
-  const action = actionBtn.dataset.action;
-  if (action === 'edit') openModal(task);
+    const actionBtn = e.target.closest('[data-action]');
+    if (!actionBtn) return;
+    const action = actionBtn.dataset.action;
+    if (action === 'edit') openModal(task);
+    if (action === 'toggleDone' && actionBtn.tagName === 'BUTTON') {
+      const dateKey = actionBtn.dataset.date;
+      task.completedDates = task.completedDates || [];
+      const idx = task.completedDates.indexOf(dateKey);
+      if (idx >= 0) task.completedDates.splice(idx, 1);
+      else task.completedDates.push(dateKey);
+      persist();
+      render();
+      saveTaskToSupabase(task);
+    }
+    if (action === 'toggleDetails') {
+      const details = card.querySelector('.task-details');
+      if (!details) return;
+      details.classList.toggle('hidden');
+      const isOpen = !details.classList.contains('hidden');
+      actionBtn.classList.toggle('text-indigo-600', isOpen);
+    }
+    return;
+  }
+
+  const dayBtn = e.target.closest('[data-day]');
+  if (dayBtn) { state.selectedDate = dayBtn.dataset.day; state.activeTab = 'daily'; render(); return; }
 });
 
 document.body.addEventListener('change', e => {
@@ -707,12 +743,15 @@ document.body.addEventListener('change', e => {
 
 document.getElementById('prevMonthBtn').addEventListener('click', () => {
   state.calendarMonth = new Date(state.calendarMonth.getFullYear(), state.calendarMonth.getMonth() - 1, 1);
-  state.selectedDay = null;
   render();
 });
 document.getElementById('nextMonthBtn').addEventListener('click', () => {
   state.calendarMonth = new Date(state.calendarMonth.getFullYear(), state.calendarMonth.getMonth() + 1, 1);
-  state.selectedDay = null;
+  render();
+});
+
+document.getElementById('backToTodayBtn').addEventListener('click', () => {
+  state.selectedDate = todayStr();
   render();
 });
 
