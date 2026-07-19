@@ -427,7 +427,7 @@ function render() {
     document.getElementById('dailyListTitle').textContent = isToday ? 'Para hoy' : `Para el ${dateKey}`;
     document.getElementById('backToTodayBtn').classList.toggle('hidden', isToday);
     renderDailySchedule();
-    renderSimpleTab('dailyList', t => t.repeats && (t.repeatUnit === 'day' || t.repeatUnit === 'weekdays') && occursOn(t, new Date(dateKey + 'T00:00:00')), dateKey);
+    renderSimpleTab('dailyList', t => occursOn(t, new Date(dateKey + 'T00:00:00')), dateKey);
   }
   if (state.activeTab === 'weekly') {
     renderWeekCalendar();
@@ -524,7 +524,7 @@ function renderDailySchedule() {
   const isToday = dateKey === todayStr();
   const now = new Date();
   const nowHour = now.getHours();
-  const dayTasks = state.tasks.filter(t => visibleForFilter(t) && t.repeats && (t.repeatUnit === 'day' || t.repeatUnit === 'weekdays') && occursOn(t, date));
+  const dayTasks = state.tasks.filter(t => visibleForFilter(t) && occursOn(t, date));
 
   let html = '';
   for (let h = 0; h < 24; h++) {
